@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 from tkinter.ttk import Progressbar, Combobox, Treeview, Style
+from datetime import datetime
 from eod_cleaner.cleaner import EODCleaner
 import logging
 
@@ -38,7 +39,10 @@ class EODCleanupGUI:
         self.archive_folder_btn.grid(row=1, column=1, padx=5, pady=5)
 
         self.move_btn = tk.Button(
-            button_frame, text="Move Unused EODs", command=self.move_files
+            button_frame,
+            text="Move Unused EODs",
+            command=self.move_files,
+            state=tk.DISABLED,
         )
         self.move_btn.grid(row=1, column=2, padx=5, pady=5)
 
@@ -54,9 +58,6 @@ class EODCleanupGUI:
             root, orient="horizontal", length=400, mode="determinate"
         )
         self.progress.pack(pady=10)
-
-        self.log_text = scrolledtext.ScrolledText(root, wrap=tk.WORD, height=10)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
 
         self.tree_frame = tk.Frame(root)
         self.tree_frame.pack(pady=10, fill=tk.BOTH, expand=True)
@@ -87,6 +88,9 @@ class EODCleanupGUI:
         self.filter_menu.pack(pady=5)
         self.filter_menu.bind("<<ComboboxSelected>>", self.filter_tree)
 
+        self.log_text = scrolledtext.ScrolledText(root, wrap=tk.WORD, height=10)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger()
         self.logger.addHandler(TextHandler(self.log_text))
@@ -107,6 +111,7 @@ class EODCleanupGUI:
         if folder:
             self.cleaner.set_folders(self.cleaner.root_folder or "", folder)
             self.logger.info(f"Archive folder selected: {folder}")
+            self.move_btn.config(state=tk.NORMAL)
 
     def select_metadata_path(self):
         file_path = filedialog.asksaveasfilename(
@@ -127,6 +132,11 @@ class EODCleanupGUI:
         runspec_files = self.cleaner.find_runspec_files()
         self.cleaner.extract_runspec_metadata(runspec_files)
         unused_eods = self.cleaner.list_unused_eods()
+        if not unused_eods:
+            self.progress.stop()
+            self.logger.info("No EOD files found.")
+            messagebox.showinfo("Info", "No EOD files found.")
+            return
         self.cleaner.save_metadata(unused_eods)
         self.progress.stop()
         self.logger.info("Scan completed and metadata saved.")
@@ -137,7 +147,12 @@ class EODCleanupGUI:
         for row in self.tree.get_children():
             self.tree.delete(row)
         for eod in eods:
-            self.tree.insert("", "end", values=eod)
+            # Assuming eod[2] is the creation date
+            creation_date = datetime.strptime(eod[2], "%Y-%m-%d %H:%M:%S").strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            formatted_eod = (eod[0], eod[1], creation_date, eod[3], eod[4])
+            self.tree.insert("", "end", values=formatted_eod)
 
     def filter_tree(self, event):
         filter_value = self.filter_var.get()
@@ -160,6 +175,12 @@ class EODCleanupGUI:
             self.root.after(100, self._move_files)
 
     def _move_files(self):
+        df = self.cleaner.load_metadata()
+        if df is None or df[df["Status"] == "Unused"].empty:
+            self.progress.stop()
+            self.logger.info("No unused EODs to move.")
+            messagebox.showinfo("Info", "No unused EODs to move.")
+            return
         self.cleaner.move_eods()
         self.progress.stop()
         self.logger.info("Unused EODs moved.")

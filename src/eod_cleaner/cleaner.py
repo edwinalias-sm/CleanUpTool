@@ -65,6 +65,8 @@ class EODCleaner:
         logging.info(
             f"Found {len(unused_eods)} EOD files: {used_count} used, {unused_count} unused."
         )
+        if not unused_eods:
+            logging.info("No EOD files found.")
         return unused_eods
 
     def save_metadata(self, eods):
