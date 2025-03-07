@@ -2,6 +2,7 @@ import shutil
 import json
 import logging
 import pandas as pd
+import platform
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,13 +26,23 @@ class EODCleaner:
         )
 
     def set_folders(self, root_folder, archive_folder):
-        self.root_folder = Path(root_folder)
-        self.archive_folder = Path(archive_folder)
+        """Set root and archive folders (supports network drives)."""
+        self.root_folder = self._resolve_path(root_folder)
+        self.archive_folder = self._resolve_path(archive_folder)
+
+    def _resolve_path(self, path):
+        """Resolve UNC paths on Windows and absolute paths on Linux."""
+        path = Path(path)
+        if platform.system() == "Windows":
+            return Path(path).resolve()
+        return path.absolute()
 
     def find_runspec_files(self):
+        """Find all .runspec.json files in the root folder."""
         return list(self.root_folder.rglob("*.runspec.json"))
 
     def extract_runspec_metadata(self, runspec_files):
+        """Extract metadata from .runspec.json files."""
         for runspec in runspec_files:
             try:
                 with runspec.open("r") as file:
@@ -47,6 +58,7 @@ class EODCleaner:
         logging.info(f"Extracted metadata for {len(self.runspec_data)} EODs.")
 
     def list_unused_eods(self):
+        """List unused EOD files based on metadata."""
         unused_eods = []
         used_count = 0
         unused_count = 0
@@ -63,15 +75,14 @@ class EODCleaner:
             unused_eods.append(
                 [str(eod), eod.name, creation_date, status, runspec_file]
             )
+
         logging.info(
             f"Found {len(unused_eods)} EOD files: {used_count} used, {unused_count} unused."
         )
-        if not unused_eods:
-            logging.info("No EOD files found.")
         return unused_eods
 
     def save_metadata(self, eods):
-        # Convert Unix timestamp to human-readable date format
+        """Save EOD metadata to an Excel file."""
         for eod in eods:
             eod[2] = datetime.fromtimestamp(eod[2]).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -89,29 +100,58 @@ class EODCleaner:
         logging.info(f"Saved metadata to {self.metadata_file}")
 
     def load_metadata(self):
+        """Load metadata from an existing Excel file."""
         if self.metadata_file.exists():
             return pd.read_excel(self.metadata_file)
         return None
 
     def move_eod(self, eod_path):
+        """Move a single EOD file to the archive."""
         try:
             shutil.move(str(eod_path), str(self.archive_folder / eod_path.name))
             logging.info(f"Moved {eod_path} to archive.")
         except Exception as e:
             logging.error(f"Error moving {eod_path}: {e}")
 
-    def move_eods(self):
+    def move_eods(self, use_threading=None):
+        """Move all unused EOD files, with optional threading."""
         df = self.load_metadata()
         if df is None:
             logging.error("No metadata found. Run dry scan first.")
             return
+
         self.archive_folder.mkdir(parents=True, exist_ok=True)
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [
-                executor.submit(self.move_eod, Path(row["File Path"]))
-                for _, row in df.iterrows()
-                if Path(row["File Path"]).exists() and row["Status"] == "Unused"
-            ]
-            for future in as_completed(futures):
-                future.result()
+        # Collect file paths
+        file_paths = [
+            Path(row["File Path"])
+            for _, row in df.iterrows()
+            if row["Status"] == "Unused"
+        ]
+        total_files = len(file_paths)
+
+        # Determine execution mode if not explicitly set
+        if use_threading is None:
+            average_size = (
+                sum(f.stat().st_size for f in file_paths if f.exists()) / total_files
+                if total_files > 0
+                else 0
+            )
+            use_threading = (
+                total_files > 100 or average_size < 50 * 1024 * 1024
+            )  # 50MB threshold
+
+        # Execute with or without threading
+        if use_threading:
+            logging.info(f"Using threading to move {total_files} files.")
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [
+                    executor.submit(self.move_eod, f) for f in file_paths if f.exists()
+                ]
+                for future in as_completed(futures):
+                    future.result()
+        else:
+            logging.info(f"Using sequential execution to move {total_files} files.")
+            for file_path in file_paths:
+                if file_path.exists():
+                    self.move_eod(file_path)
