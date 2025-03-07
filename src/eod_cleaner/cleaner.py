@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class EODCleaner:
@@ -92,6 +93,13 @@ class EODCleaner:
             return pd.read_excel(self.metadata_file)
         return None
 
+    def move_eod(self, eod_path):
+        try:
+            shutil.move(str(eod_path), str(self.archive_folder / eod_path.name))
+            logging.info(f"Moved {eod_path} to archive.")
+        except Exception as e:
+            logging.error(f"Error moving {eod_path}: {e}")
+
     def move_eods(self):
         df = self.load_metadata()
         if df is None:
@@ -99,8 +107,11 @@ class EODCleaner:
             return
         self.archive_folder.mkdir(parents=True, exist_ok=True)
 
-        for _, row in df.iterrows():
-            eod_path = Path(row["File Path"])
-            if eod_path.exists() and row["Status"] == "Unused":
-                shutil.move(str(eod_path), str(self.archive_folder / eod_path.name))
-                logging.info(f"Moved {eod_path} to archive.")
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [
+                executor.submit(self.move_eod, Path(row["File Path"]))
+                for _, row in df.iterrows()
+                if Path(row["File Path"]).exists() and row["Status"] == "Unused"
+            ]
+            for future in as_completed(futures):
+                future.result()
