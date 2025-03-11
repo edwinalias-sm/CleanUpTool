@@ -148,10 +148,12 @@ class EODCleaner:
                 futures = [
                     executor.submit(self.move_eod, f) for f in file_paths if f.exists()
                 ]
-                for future in as_completed(futures):
+                for i, future in enumerate(as_completed(futures)):
                     future.result()
+                    logging.info(f"Moved {i + 1}/{total_files} files.")
         else:
             logging.info(f"Using sequential execution to move {total_files} files.")
-            for file_path in file_paths:
+            for i, file_path in enumerate(file_paths):
                 if file_path.exists():
                     self.move_eod(file_path)
+                    logging.info(f"Moved {i + 1}/{total_files} files.")

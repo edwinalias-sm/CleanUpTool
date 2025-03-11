@@ -14,6 +14,7 @@ from datetime import datetime
 from eod_cleaner.cleaner import EODCleaner
 import logging
 import threading
+from pathlib import Path
 
 
 class EODCleanupGUI:
@@ -23,7 +24,7 @@ class EODCleanupGUI:
         self.root.title("EOD Cleanup Tool")
         self.root.geometry("850x600")
 
-        self.use_threading = tk.BooleanVar(value=True)
+        self.use_threading = tk.BooleanVar(value=False)
 
         self.setup_ui()
         logging.basicConfig(level=logging.INFO)
@@ -148,7 +149,17 @@ class EODCleanupGUI:
 
     def _run_scan(self):
         runspec_files = self.cleaner.find_runspec_files()
-        self.cleaner.extract_runspec_metadata(runspec_files)
+        total_files = len(runspec_files)
+        self.progress["maximum"] = total_files
+
+        for i, runspec in enumerate(runspec_files):
+            self.cleaner.extract_runspec_metadata([runspec])
+            if i % 10 == 0:  # Update UI every 10 iterations
+                self.progress["value"] = i + 1
+                self.root.update_idletasks()
+            if i % max(1, total_files // 10) == 0:
+                self.logger.info(f"Processed {i + 1}/{total_files} runspec files.")
+
         unused_eods = self.cleaner.list_unused_eods()
         self.progress.stop()
         if not unused_eods:
@@ -161,24 +172,18 @@ class EODCleanupGUI:
         self.display_results(unused_eods)
 
     def display_results(self, eods):
-        for row in self.tree.get_children():
-            self.tree.delete(row)
+        self.all_eods = eods  # Store data for filtering
+        self.tree.delete(*self.tree.get_children())  # Clear existing entries
         for eod in eods:
-            creation_date = datetime.strptime(eod[2], "%Y-%m-%d %H:%M:%S").strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            self.tree.insert(
-                "", "end", values=(eod[0], eod[1], creation_date, eod[3], eod[4])
-            )
+            self.tree.insert("", "end", values=eod)
 
     def filter_tree(self, event):
         filter_value = self.filter_var.get()
-        for row in self.tree.get_children():
-            self.tree.delete(row)
-        eods = self.cleaner.list_unused_eods()
-        for eod in eods:
+        self.tree.delete(*self.tree.get_children())  # Clear tree first
+
+        for eod in self.all_eods:
             if filter_value == "All" or eod[3] == filter_value:
-                self.tree.insert("", "end", values=eod)
+                self.tree.insert("", "end", values=eod)  # Reuse existing data
 
     def move_files(self):
         if not self.cleaner.archive_folder:
@@ -194,10 +199,36 @@ class EODCleanupGUI:
                 self._move_files()
 
     def _move_files(self):
-        self.cleaner.move_eods()
-        self.progress.stop()
-        self.logger.info("Unused EODs moved.")
-        messagebox.showinfo("Success", "Unused EODs moved.")
+        try:
+            df = self.cleaner.load_metadata()
+            if df is None:
+                self.logger.error("No metadata found. Run dry scan first.")
+                self.progress.stop()
+                return
+
+            file_paths = [
+                Path(row["File Path"])
+                for _, row in df.iterrows()
+                if row["Status"] == "Unused"
+            ]
+            total_files = len(file_paths)
+            self.progress["maximum"] = total_files
+
+            for i, file_path in enumerate(file_paths):
+                if file_path.exists():
+                    self.cleaner.move_eod(file_path)
+                    self.progress["value"] = i + 1
+                    self.root.update_idletasks()
+                    self.logger.info(f"Moved {i + 1}/{total_files} files.")
+
+            self.logger.info("Unused EODs moved.")
+            self.progress.stop()
+            messagebox.showinfo("Success", "Unused EODs moved.")
+        except Exception as e:
+            self.logger.error(f"Error moving files: {e}")
+            messagebox.showerror("Error", f"Error moving files: {e}")
+        finally:
+            self.progress.stop()
 
 
 class TextHandler(logging.Handler):
@@ -207,4 +238,8 @@ class TextHandler(logging.Handler):
 
     def emit(self, record):
         msg = self.format(record)
-        self.text_widget.after(0, lambda: self.text_widget.insert(tk.END, msg + "\n"))
+        self.text_widget.after(0, self._append_log, msg)
+
+    def _append_log(self, msg):
+        self.text_widget.insert(tk.END, msg + "\n")
+        self.text_widget.see(tk.END)  # Auto-scroll to the end
