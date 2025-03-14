@@ -27,9 +27,7 @@ class EODCleanupGUI:
         self.use_threading = tk.BooleanVar(value=False)
 
         self.setup_ui()
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger()
-        self.logger.addHandler(TextHandler(self.log_text))
+        self.setup_logging()
 
     def setup_ui(self):
         main_frame = Frame(self.root, padding=10)
@@ -77,7 +75,7 @@ class EODCleanupGUI:
             values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
             state="readonly",
         )
-        self.log_level.current(1)
+        self.log_level.current(1)  # Set default to INFO
         self.log_level.pack(side=tk.LEFT, padx=5)
         self.log_level.bind("<<ComboboxSelected>>", self.set_log_level)
 
@@ -96,12 +94,13 @@ class EODCleanupGUI:
                 "Creation Date",
                 "Status",
                 "Runspec File",
+                "Actual Path from runspec",
             ),
             show="headings",
         )
         for col in self.tree["columns"]:
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=150)
+            self.tree.column(col, width=200, stretch=tk.YES)
         self.tree.pack(pady=10, fill=tk.BOTH, expand=True)
 
         # Filter
@@ -118,6 +117,12 @@ class EODCleanupGUI:
         # Log Output
         self.log_text = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, height=10)
         self.log_text.pack(fill=tk.BOTH, expand=True)
+
+    def setup_logging(self):
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger()
+        self.logger.addHandler(TextHandler(self.log_text))
+        self.logger.info("Logging setup complete.")
 
     def set_log_level(self, event):
         level = self.log_level.get()
@@ -243,3 +248,8 @@ class TextHandler(logging.Handler):
     def _append_log(self, msg):
         self.text_widget.insert(tk.END, msg + "\n")
         self.text_widget.see(tk.END)  # Auto-scroll to the end
+        self.text_widget.update_idletasks()
+        self.flush()
+
+    def flush(self):
+        pass  # Ensures logs are processed in real-time

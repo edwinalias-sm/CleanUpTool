@@ -82,9 +82,9 @@ class EODCleaner:
                         # output_eod = entry.get("output")
                         # if output_eod:
                         # self.runspec_data[Path(output_eod).name] = str(runspec)
+                logging.debug(f"Extracted metadata form file: {runspec} ")
             except Exception as e:
                 logging.error(f"Error reading {runspec}: {e}")
-        logging.info(f"Extracted metadata for {len(self.runspec_data)} EODs.")
 
     def list_unused_eods(self):
         """List unused EOD files based on metadata."""
