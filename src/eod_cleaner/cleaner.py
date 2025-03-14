@@ -3,6 +3,7 @@ import json
 import logging
 import pandas as pd
 import platform
+import re
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -41,6 +42,29 @@ class EODCleaner:
         """Find all .runspec.json files in the root folder."""
         return list(self.root_folder.rglob("*.runspec.json"))
 
+    def _resolve_runspec_path(self, input_file, actual_file_path):
+        """Resolve EOD paths from the 'inputs' list in the runspec file."""
+        # Convert Path to string if needed
+        actual_file_path = (
+            Path(actual_file_path)
+            if not isinstance(actual_file_path, Path)
+            else actual_file_path
+        )
+        if input_file.endswith(".eod"):
+            # Trans linux path to P drive path for Windows
+            if platform.system() == "Windows" and "/mnt/public/" in input_file:
+                input_file = input_file.replace("/mnt/public/", "P:/")
+
+            # For checking EOD in "recordings" test case folder
+            if not "FLIB" in input_file:
+                # Replace /v1/query to the end by input_file
+                fix_str_path = actual_file_path.as_posix()
+                input_file = re.sub(r"v1/query.*$", input_file, fix_str_path)
+
+        return Path(input_file)
+
+        return eods_path
+
     def extract_runspec_metadata(self, runspec_files):
         """Extract metadata from .runspec.json files."""
         for runspec in runspec_files:
@@ -49,10 +73,15 @@ class EODCleaner:
                     data = json.load(file)
                     for entry in data:
                         for eod in entry.get("inputs", []):
-                            self.runspec_data[Path(eod).name] = str(runspec)
-                        output_eod = entry.get("output")
-                        if output_eod:
-                            self.runspec_data[Path(output_eod).name] = str(runspec)
+                            self.runspec_data[Path(eod).name] = {
+                                "Runspecfile": str(runspec),
+                                "actual_eod_path": self._resolve_runspec_path(
+                                    eod, runspec
+                                ),
+                            }
+                        # output_eod = entry.get("output")
+                        # if output_eod:
+                        # self.runspec_data[Path(output_eod).name] = str(runspec)
             except Exception as e:
                 logging.error(f"Error reading {runspec}: {e}")
         logging.info(f"Extracted metadata for {len(self.runspec_data)} EODs.")
@@ -62,20 +91,47 @@ class EODCleaner:
         unused_eods = []
         used_count = 0
         unused_count = 0
+        missing_count = 0
+        # Track found EODs
+        found_eods = set()
+
         for eod in self.root_folder.rglob("*.eod"):
             creation_date = eod.stat().st_ctime
             status = "Unused"
             runspec_file = ""
+            input_runspec_path = ""
             if eod.name in self.runspec_data:
                 status = "Used"
-                runspec_file = self.runspec_data[eod.name]
+                runspec_file = self.runspec_data[eod.name]["Runspecfile"]
+                input_runspec_path = self.runspec_data[eod.name]["actual_eod_path"]
                 used_count += 1
+                found_eods.add(eod.name)
             else:
                 unused_count += 1
             unused_eods.append(
-                [str(eod), eod.name, creation_date, status, runspec_file]
+                [
+                    str(eod),
+                    eod.name,
+                    creation_date,
+                    status,
+                    runspec_file,
+                    input_runspec_path,
+                ]
             )
-
+            # Check for missing EODs in runspec_data
+        for eod_name, eod_info in self.runspec_data.items():
+            if eod_name not in found_eods:
+                missing_count += 1
+                unused_eods.append(
+                    [
+                        "",
+                        eod_name,
+                        None,
+                        "Missing",
+                        eod_info["Runspecfile"],
+                        eod_info["actual_eod_path"],
+                    ]
+                )
         logging.info(
             f"Found {len(unused_eods)} EOD files: {used_count} used, {unused_count} unused."
         )
@@ -84,8 +140,10 @@ class EODCleaner:
     def save_metadata(self, eods):
         """Save EOD metadata to an Excel file."""
         for eod in eods:
-            eod[2] = datetime.fromtimestamp(eod[2]).strftime("%Y-%m-%d %H:%M:%S")
-
+            if eod[2] is not None:  # Ensure creation date is valid
+                eod[2] = datetime.fromtimestamp(eod[2]).strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                eod[2] = "N/A"  # Assign a default value for missing files
         df = pd.DataFrame(
             eods,
             columns=[
@@ -94,6 +152,7 @@ class EODCleaner:
                 "Creation Date",
                 "Status",
                 "Runspec File",
+                "Actual Path from runspec",
             ],
         )
         df.to_excel(self.metadata_file, index=False)

@@ -109,7 +109,7 @@ class EODCleanupGUI:
         self.filter_menu = Combobox(
             main_frame,
             textvariable=self.filter_var,
-            values=["All", "Used", "Unused"],
+            values=["All", "Used", "Unused", "Missing"],
             state="readonly",
         )
         self.filter_menu.pack(pady=5)
