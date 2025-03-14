@@ -214,7 +214,7 @@ class EODCleanupGUI:
             file_paths = [
                 Path(row["File Path"])
                 for _, row in df.iterrows()
-                if row["Status"] == "Unused"
+                if row["Status"] == "Unused"  # or in ["Unused", "Missing"]
             ]
             total_files = len(file_paths)
             self.progress["maximum"] = total_files
