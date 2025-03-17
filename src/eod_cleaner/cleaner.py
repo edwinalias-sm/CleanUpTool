@@ -140,7 +140,9 @@ class EODCleaner:
         for eod in eods:
             if eod[2] is not None:  # Ensure creation date is valid
                 if isinstance(eod[2], (int, float)):
-                    eod[2] = datetime.fromtimestamp(eod[2]).strftime("%Y-%m-%d %H:%M:%S")
+                    eod[2] = datetime.fromtimestamp(eod[2]).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
             else:
                 eod[2] = "N/A"  # Assign a default value for missing files
         df = pd.DataFrame(
