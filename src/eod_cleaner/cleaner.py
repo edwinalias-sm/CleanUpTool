@@ -63,8 +63,6 @@ class EODCleaner:
 
         return Path(input_file)
 
-        return eods_path
-
     def extract_runspec_metadata(self, runspec_files):
         """Extract metadata from .runspec.json files."""
         for runspec in runspec_files:
@@ -141,7 +139,8 @@ class EODCleaner:
         """Save EOD metadata to an Excel file."""
         for eod in eods:
             if eod[2] is not None:  # Ensure creation date is valid
-                eod[2] = datetime.fromtimestamp(eod[2]).strftime("%Y-%m-%d %H:%M:%S")
+                if isinstance(eod[2], (int, float)):
+                    eod[2] = datetime.fromtimestamp(eod[2]).strftime("%Y-%m-%d %H:%M:%S")
             else:
                 eod[2] = "N/A"  # Assign a default value for missing files
         df = pd.DataFrame(
