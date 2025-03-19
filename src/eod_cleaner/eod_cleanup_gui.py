@@ -134,6 +134,7 @@ class EODCleanupGUI:
         if folder:
             self.cleaner.set_folders(folder, self.cleaner.archive_folder or "")
             self.logger.info(f"Root folder selected: {folder}")
+            self.log_text.delete(1.0, tk.END)  # Clear the console
 
     def select_archive_folder(self):
         folder = filedialog.askdirectory()
@@ -195,8 +196,8 @@ class EODCleanupGUI:
             messagebox.showerror("Error", "Select an archive folder first!")
             return
         if messagebox.askyesno(
-            "Confirm Move", "Move unused EODs? This action is irreversible."
-        ):
+            "Confirm Move", "Move unused EODs? This action is irreversible.", icon=messagebox.WARNING
+        ):  # Confirm before moving files
             self.progress.start()
             if self.use_threading.get():
                 threading.Thread(target=self._move_files, daemon=True).start()
