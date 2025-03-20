@@ -14,6 +14,7 @@ class EODCleaner:
         self.root_folder = None
         self.archive_folder = None
         self.runspec_data = {}
+        self.eod_dict = {}
         self.metadata_file = (
             Path(metadata_file)
             if metadata_file
@@ -134,29 +135,37 @@ class EODCleaner:
         logging.info(
             f"Found {len(unused_eods)} EOD files: {used_count} used, {unused_count} unused."
         )
+        for eod in unused_eods:
+            self.eod_dict[eod[1]] = {
+                "file_path": eod[0],
+                "file_name": eod[1],
+                "creation_date": eod[2],
+                "status": eod[3],
+                "runspec_file": eod[4],
+                "actual_path_from_runspec": eod[5],
+            }
         return unused_eods
 
-    def save_metadata(self, eods):
-        """Save EOD metadata to an Excel file."""
-        for eod in eods:
-            if eod[2] is not None:  # Ensure creation date is valid
-                if isinstance(eod[2], (int, float)):
-                    eod[2] = datetime.fromtimestamp(eod[2]).strftime(
+    def save_metadata(self, metadata):
+        """Save metadata to an Excel file."""
+        formatted_data = []
+
+        for file_name, attributes in metadata.items():
+            formatted_entry = {"File Name": file_name}
+
+            for key, value in attributes.items():
+                if isinstance(value, (int, float)):  # Convert timestamps
+                    formatted_entry[key] = datetime.fromtimestamp(value).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
-            else:
-                eod[2] = "N/A"  # Assign a default value for missing files
-        df = pd.DataFrame(
-            eods,
-            columns=[
-                "File Path",
-                "File Name",
-                "Creation Date",
-                "Status",
-                "Runspec File",
-                "Actual Path from runspec",
-            ],
-        )
+                elif isinstance(value, Path):  # Convert Path objects to strings
+                    formatted_entry[key] = str(value)
+                else:
+                    formatted_entry[key] = value if value is not None else "N/A"
+
+            formatted_data.append(formatted_entry)
+
+        df = pd.DataFrame(formatted_data)
         df.to_excel(self.metadata_file, index=False)
         logging.info(f"Saved metadata to {self.metadata_file}")
 

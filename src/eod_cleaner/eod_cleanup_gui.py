@@ -138,6 +138,7 @@ class EODCleanupGUI:
         self.logger.info("Runspec data extraction completed.")
         messagebox.showinfo("Success", "Runspec data extraction completed.")
         self.display_runspec_data()
+        self.cleaner.save_metadata(self.cleaner.runspec_data)
 
     def display_runspec_data(self):
         self.tree.delete(*self.tree.get_children())  # Clear existing entries
@@ -209,7 +210,8 @@ class EODCleanupGUI:
             self.logger.info("No EOD files found.")
             messagebox.showinfo("Info", "No EOD files found.")
             return
-        self.cleaner.save_metadata(unused_eods)
+        self.cleaner.save_metadata(self.cleaner.eod_dict)
+        self.logger.info(unused_eods)
         self.logger.info("Scan completed and metadata saved.")
         messagebox.showinfo("Success", "Scan completed and metadata saved.")
         self.display_results(unused_eods)
