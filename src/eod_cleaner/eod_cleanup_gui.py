@@ -63,6 +63,9 @@ class EODCleanupGUI:
             state=tk.DISABLED,
         )
         self.move_btn.pack(side=tk.LEFT, padx=5)
+        Button(
+            action_frame, text="Extract Runspec Data", command=self.extract_runspec_data
+        ).pack(side=tk.LEFT, padx=5)
 
         Checkbutton(
             action_frame, text="Use Threading", variable=self.use_threading
@@ -117,6 +120,40 @@ class EODCleanupGUI:
         # Log Output
         self.log_text = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, height=10)
         self.log_text.pack(fill=tk.BOTH, expand=True)
+
+    def extract_runspec_data(self):
+        if not self.cleaner.root_folder:
+            messagebox.showerror("Error", "Select a root folder first!")
+            return
+        self.progress.start()
+        if self.use_threading.get():
+            threading.Thread(target=self._extract_runspec_data, daemon=True).start()
+        else:
+            self._extract_runspec_data()
+
+    def _extract_runspec_data(self):
+        runspec_files = self.cleaner.find_runspec_files()
+        self.cleaner.extract_runspec_metadata(runspec_files)
+        self.progress.stop()
+        self.logger.info("Runspec data extraction completed.")
+        messagebox.showinfo("Success", "Runspec data extraction completed.")
+        self.display_runspec_data()
+
+    def display_runspec_data(self):
+        self.tree.delete(*self.tree.get_children())  # Clear existing entries
+        for eod_name, eod_info in self.cleaner.runspec_data.items():
+            self.tree.insert(
+                "",
+                "end",
+                values=(
+                    eod_info["path_in_runspec"],
+                    eod_name,
+                    "",
+                    "Used",
+                    eod_info["Runspecfile"],
+                    eod_info["actual_eod_path"],
+                ),
+            )
 
     def setup_logging(self):
         logging.basicConfig(level=logging.INFO)
@@ -196,7 +233,9 @@ class EODCleanupGUI:
             messagebox.showerror("Error", "Select an archive folder first!")
             return
         if messagebox.askyesno(
-            "Confirm Move", "Move unused EODs? This action is irreversible.", icon=messagebox.WARNING
+            "Confirm Move",
+            "Move unused EODs? This action is irreversible.",
+            icon=messagebox.WARNING,
         ):  # Confirm before moving files
             self.progress.start()
             if self.use_threading.get():

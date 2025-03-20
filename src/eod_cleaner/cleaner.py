@@ -76,6 +76,7 @@ class EODCleaner:
                                 "actual_eod_path": self._resolve_runspec_path(
                                     eod, runspec
                                 ),
+                                "path_in_runspec": eod,
                             }
                         # output_eod = entry.get("output")
                         # if output_eod:
