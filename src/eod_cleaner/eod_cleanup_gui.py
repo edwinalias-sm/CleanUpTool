@@ -53,18 +53,20 @@ class EODCleanupGUI:
         action_frame = Frame(main_frame)
         action_frame.pack(pady=10, fill=tk.X)
 
-        Button(action_frame, text="Run Dry Scan", command=self.run_scan).pack(
-            side=tk.LEFT, padx=5
-        )
+        Button(
+            action_frame, text="Extract Runspec Data", command=self.extract_runspec_data
+        ).pack(side=tk.LEFT, padx=5)
         self.move_btn = Button(
+            action_frame,
+            text="Extract EOD Data",
+            command=self.run_scan,
+        )
+        self.move_btn.pack(side=tk.LEFT, padx=5)
+        Button(
             action_frame,
             text="Move Unused EODs",
             command=self.move_files,
             state=tk.DISABLED,
-        )
-        self.move_btn.pack(side=tk.LEFT, padx=5)
-        Button(
-            action_frame, text="Extract Runspec Data", command=self.extract_runspec_data
         ).pack(side=tk.LEFT, padx=5)
 
         Checkbutton(
@@ -211,7 +213,6 @@ class EODCleanupGUI:
             messagebox.showinfo("Info", "No EOD files found.")
             return
         self.cleaner.save_metadata(self.cleaner.eod_dict)
-        self.logger.info(unused_eods)
         self.logger.info("Scan completed and metadata saved.")
         messagebox.showinfo("Success", "Scan completed and metadata saved.")
         self.display_results(unused_eods)
